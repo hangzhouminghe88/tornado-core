@@ -55,6 +55,13 @@ contract MerkleTreeWithHistory {
   // 下一个可写叶子的位置（类似指针）
   uint32 public nextIndex = 0;
 
+  // 这个构造函数的作用（超级关键）
+  // 它创建了一棵“可用于 ZK-SNARK 的 Merkle Tree”
+  // 预先构建所有 ZERO 节点（空节点哈希）
+  // 填充每一层的默认子树值 filledSubtrees[]
+  // 设置一个合法的、可验证的空树根 root[0]
+  // 记录 Merkle Tree 的高度 levels
+  // 注册 MiMC 哈希器 hasher
   constructor(uint32 _levels, IHasher _hasher) {
     // Merkle Tree 的高度限制 1 -31 
     require(_levels > 0, "_levels should be greater than zero");
@@ -75,6 +82,11 @@ contract MerkleTreeWithHistory {
   /**
     @dev Hash 2 tree leaves, returns MiMC(_left, _right)
   */
+  /**
+    @dev 哈希两个叶子节点，内部调用 MiMC Sponge
+    输入：_left, _right
+    输出：哈希后的 bytes32（树的上层节点）
+  */
   function hashLeftRight(
     IHasher _hasher,
     bytes32 _left,
@@ -84,33 +96,45 @@ contract MerkleTreeWithHistory {
     require(uint256(_right) < FIELD_SIZE, "_right should be inside the field");
     uint256 R = uint256(_left);
     uint256 C = 0;
+    // 第一次 Sponge
     (R, C) = _hasher.MiMCSponge(R, C);
+    // 加上右节点再 Sponge
     R = addmod(R, uint256(_right), FIELD_SIZE);
     (R, C) = _hasher.MiMCSponge(R, C);
     return bytes32(R);
   }
 
+  /**
+    @dev 插入一个叶子节点 _leaf，返回该节点的 index（叶子编号）
+    此函数会自底向上更新 Merkle Tree，并更新根。
+  */
   function _insert(bytes32 _leaf) internal returns (uint32 index) {
     uint32 _nextIndex = nextIndex;
+    // 防止树溢出（超过最大叶子数量）
     require(_nextIndex != uint32(2)**levels, "Merkle tree is full. No more leaves can be added");
     uint32 currentIndex = _nextIndex;
     bytes32 currentLevelHash = _leaf;
     bytes32 left;
     bytes32 right;
 
+    // 自底向上构造 Merkle Tree
     for (uint32 i = 0; i < levels; i++) {
       if (currentIndex % 2 == 0) {
+        // 当前 index 是左节点，右节点为 ZERO
         left = currentLevelHash;
         right = zeros(i);
-        filledSubtrees[i] = currentLevelHash;
+        filledSubtrees[i] = currentLevelHash; // 更新本层的 filledSubtree
       } else {
+        // 当前 index 是右节点，与 filledSubtrees 合并
         left = filledSubtrees[i];
         right = currentLevelHash;
       }
+      // 计算上一层节点
       currentLevelHash = hashLeftRight(hasher, left, right);
+      // index 右移一格（进入上一层）
       currentIndex /= 2;
     }
-
+    // 写入新的 Root（循环数组）
     uint32 newRootIndex = (currentRootIndex + 1) % ROOT_HISTORY_SIZE;
     currentRootIndex = newRootIndex;
     roots[newRootIndex] = currentLevelHash;
@@ -121,12 +145,16 @@ contract MerkleTreeWithHistory {
   /**
     @dev Whether the root is present in the root history
   */
+  /**
+    @dev 检查某个 root 是否在最近的 ROOT_HISTORY_SIZE 个历史根中
+  */
   function isKnownRoot(bytes32 _root) public view returns (bool) {
     if (_root == 0) {
       return false;
     }
     uint32 _currentRootIndex = currentRootIndex;
     uint32 i = _currentRootIndex;
+    // 循环检查所有历史根
     do {
       if (_root == roots[i]) {
         return true;
@@ -141,6 +169,9 @@ contract MerkleTreeWithHistory {
 
   /**
     @dev Returns the last root
+  */
+  /**
+    @dev 返回当前最新的根
   */
   function getLastRoot() public view returns (bytes32) {
     return roots[currentRootIndex];
