@@ -56,15 +56,19 @@ contract MerkleTreeWithHistory {
   uint32 public nextIndex = 0;
 
   constructor(uint32 _levels, IHasher _hasher) {
+    // Merkle Tree 的高度限制 1 -31 
     require(_levels > 0, "_levels should be greater than zero");
     require(_levels < 32, "_levels should be less than 32");
+    // 保存参数到状态变量
+    // levels：树有几层
+    // hasher：MiMC 哈希器地址,用于计算 merkle tree 节点哈希
     levels = _levels;
     hasher = _hasher;
-
+    // 初始化每一层的 filledSubtrees 默认值
     for (uint32 i = 0; i < _levels; i++) {
       filledSubtrees[i] = zeros(i);
     }
-
+    // 初始化根，根默认是最高层的 ZERO 节点
     roots[0] = zeros(_levels - 1);
   }
 
