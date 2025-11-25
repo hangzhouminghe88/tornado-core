@@ -13,25 +13,46 @@
 pragma solidity ^0.7.0;
 
 interface IHasher {
+  // MiMC Sponge 哈希函数接口，输入两个 uint256，输出一对 uint256（xL, xR）
   function MiMCSponge(uint256 in_xL, uint256 in_xR) external pure returns (uint256 xL, uint256 xR);
 }
 
 contract MerkleTreeWithHistory {
+  // Merkle Tree 中使用的有限域大小（Baby Jubjub / BN254 曲线对应的字段）
   uint256 public constant FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+  // ZERO_VALUE：空节点默认值，用于树初始化（为空叶子填充值）
   uint256 public constant ZERO_VALUE = 21663839004416932945382355908790599225266501822907911457504978515578255421292; // = keccak256("tornado") % FIELD_SIZE
+  // 外部 MiMC 哈希器合约
   IHasher public immutable hasher;
 
+  // Merkle Tree 的层数，例如 20 层或 32 层
   uint32 public levels;
 
   // the following variables are made public for easier testing and debugging and
   // are not supposed to be accessed in regular code
+  // 以下变量已设为公共变量，以便于测试和调试，并且
+  // 不应在常规代码中访问
 
   // filledSubtrees and roots could be bytes32[size], but using mappings makes it cheaper because
   // it removes index range check on every interaction
+  // filledSubtrees 和 roots 可以设置为 bytes32[size]，但使用mapping 可以降低GAS费用，因为
+  // 它避免了每次交互时进行索引范围检查
+  
+  /*
+    filledSubtrees 和 roots 设计成 mapping 而不是数组，是为了节省 gas：
+    - mapping 不需要边界检查
+    - filledSubtrees[i] 表示：树的每一层最近一次填充的节点值
+    - roots 用来保存最近的 ROOT_HISTORY_SIZE 个历史 Root
+  */
+
   mapping(uint256 => bytes32) public filledSubtrees;
   mapping(uint256 => bytes32) public roots;
+
+  // 保存最近多少个 Merkle Root，用于验证历史存在性
   uint32 public constant ROOT_HISTORY_SIZE = 30;
+  // 当前 ROOT 的指针（循环使用）
   uint32 public currentRootIndex = 0;
+  // 下一个可写叶子的位置（类似指针）
   uint32 public nextIndex = 0;
 
   constructor(uint32 _levels, IHasher _hasher) {
