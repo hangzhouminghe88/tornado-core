@@ -35,14 +35,16 @@
 pragma solidity ^0.7.0;
 
 library Pairing {
+  // 定义椭圆曲线域的素数q
   uint256 constant PRIME_Q = 21888242871839275222246405745257275088696311157297823662689037894645226208583;
-
+  // G1群上的点，由两个坐标(X, Y)表示
   struct G1Point {
     uint256 X;
     uint256 Y;
   }
 
   // Encoding of field elements is: X[0] * z + X[1]
+  // G2群上的点，坐标是有限域中的元素，用两个uint256表示
   struct G2Point {
     uint256[2] X;
     uint256[2] Y;
@@ -51,8 +53,12 @@ library Pairing {
   /*
    * @return The negation of p, i.e. p.plus(p.negate()) should be zero.
    */
+  /*
+   * @return p的负值。 p.plus(p.negate()) 应该为0 。
+   */
   function negate(G1Point memory p) internal pure returns (G1Point memory) {
     // The prime q in the base field F_q for G1
+    // 基域F_q的素数q用于G1
     if (p.X == 0 && p.Y == 0) {
       return G1Point(0, 0);
     } else {
@@ -62,6 +68,9 @@ library Pairing {
 
   /*
    * @return r the sum of two points of G1
+   */
+  /*
+   * @return r，两个G1点之和
    */
   function plus(
     G1Point memory p1,
@@ -75,8 +84,10 @@ library Pairing {
     bool success;
 
     // solium-disable-next-line security/no-inline-assembly
+    // 内联汇编调用预编译合约6（椭圆曲线加法）
     assembly {
-      success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
+    // 如果失败，使用"invalid"以使Gas估算正常工作
+    success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
     // Use "invalid" to make gas estimation work
       switch success case 0 { invalid() }
     }
@@ -89,6 +100,9 @@ library Pairing {
    *         p == p.scalar_mul(1) and p.plus(p) == p.scalar_mul(2) for all
    *         points p.
    */
+   /*
+   * @return r，G1点与标量的乘积
+   */
   function scalar_mul(G1Point memory p, uint256 s) internal view returns (G1Point memory r) {
     uint256[3] memory input;
     input[0] = p.X;
@@ -96,9 +110,11 @@ library Pairing {
     input[2] = s;
     bool success;
     // solium-disable-next-line security/no-inline-assembly
+    // 内联汇编调用预编译合约7（椭圆曲线标量乘法）
     assembly {
       success := staticcall(sub(gas(), 2000), 7, input, 0x80, r, 0x60)
     // Use "invalid" to make gas estimation work
+    // 如果失败，使用"invalid"以使Gas估算正常工作
       switch success case 0 { invalid() }
     }
     require(success, "pairing-mul-failed");
@@ -108,6 +124,9 @@ library Pairing {
    *         e(p1[0], p2[0]) *  .... * e(p1[n], p2[n]) == 1
    *         For example,
    *         pairing([P1(), P1().negate()], [P2(), P2()]) should return true.
+   */
+  /* @return 计算配对检查的结果
+   * e(p1[0], p2[0]) * .... * e(p1[n], p2[n]) == 1
    */
   function pairing(
     G1Point memory a1,
@@ -139,9 +158,11 @@ library Pairing {
     bool success;
 
     // solium-disable-next-line security/no-inline-assembly
+    // 内联汇编调用预编译合约8（配对检查）
     assembly {
       success := staticcall(sub(gas(), 2000), 8, add(input, 0x20), mul(inputSize, 0x20), out, 0x20)
     // Use "invalid" to make gas estimation work
+    // 如果失败，使用"invalid"以使Gas估算正常工作
       switch success case 0 { invalid() }
     }
 
@@ -152,10 +173,13 @@ library Pairing {
 }
 
 contract Verifier {
+  // SNARK标量域的常量
   uint256 constant SNARK_SCALAR_FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
   uint256 constant PRIME_Q = 21888242871839275222246405745257275088696311157297823662689037894645226208583;
+  // 引入Pairing库
   using Pairing for *;
 
+  // 验证密钥的结构体，包含alpha1、beta2、gamma2、delta2和IC（输入点）
   struct VerifyingKey {
     Pairing.G1Point alfa1;
     Pairing.G2Point beta2;
@@ -164,13 +188,17 @@ contract Verifier {
     Pairing.G1Point[7] IC;
   }
 
+  // 证明的结构体，包含A、B、C三个配对点
   struct Proof {
     Pairing.G1Point A;
     Pairing.G2Point B;
     Pairing.G1Point C;
   }
 
+  // 返回硬编码的验证密钥
   function verifyingKey() internal pure returns (VerifyingKey memory vk) {
+    // 验证密钥是可信设置仪式中生成的，包含多个椭圆曲线上的点
+    // 这些点用于验证证明
     vk.alfa1 = Pairing.G1Point(uint256(20692898189092739278193869274495556617788530808486270118371701516666252877969), uint256(11713062878292653967971378194351968039596396853904572879488166084231740557279));
     vk.beta2 = Pairing.G2Point([uint256(12168528810181263706895252315640534818222943348193302139358377162645029937006), uint256(281120578337195720357474965979947690431622127986816839208576358024608803542)], [uint256(16129176515713072042442734839012966563817890688785805090011011570989315559913), uint256(9011703453772030375124466642203641636825223906145908770308724549646909480510)]);
     vk.gamma2 = Pairing.G2Point([uint256(11559732032986387107991004021392285783925812861821192530917403151452391805634), uint256(10857046999023057135944570762232829481370756359578518086990519993285655852781)], [uint256(4082367875863433681332203403145435568316851327593401208105741076214120093531), uint256(8495653923123431417604973247489272438418190587263600148770280649306958101930)]);
@@ -189,34 +217,52 @@ contract Verifier {
    * @returns Whether the proof is valid given the hardcoded verifying key
    *          above and the public inputs
    */
+  /**
+    @dev 验证zk-SNARK证明
+    @param _proof 序列化后的zk-SNARK证明数据
+    @param _input 序列化后的公共输入
+    @return 如果证明有效，则返回true
+  */
   function verifyProof(
     bytes memory proof,
     uint256[6] memory input
   ) public view returns (bool) {
+    // 将字节数组 `proof` 解码为包含8个uint256的数组。
+    // 这8个uint256代表zk-SNARK证明中的三个椭圆曲线点（A、B和C）。
     uint256[8] memory p = abi.decode(proof, (uint256[8]));
 
     // Make sure that each element in the proof is less than the prime q
+    // 确保证明中的每个元素都小于素数q（用于椭圆曲线的域），以防止域外数据被滥用。
     for (uint8 i = 0; i < p.length; i++) {
       require(p[i] < PRIME_Q, "verifier-proof-element-gte-prime-q");
     }
-
+    
+    // 从解码后的数组中解析出证明结构体（包含A、B、C点）。
     Proof memory _proof;
     _proof.A = Pairing.G1Point(p[0], p[1]);
     _proof.B = Pairing.G2Point([p[2], p[3]], [p[4], p[5]]);
     _proof.C = Pairing.G1Point(p[6], p[7]);
 
+    // 获取硬编码的验证密钥。
     VerifyingKey memory vk = verifyingKey();
 
     // Compute the linear combination vk_x
+    // 计算一个线性组合 `vk_x`。
+    // 它从 `vk.IC[0]` 开始，这是验证密钥的第一个输入点
     Pairing.G1Point memory vk_x = Pairing.G1Point(0, 0);
     vk_x = Pairing.plus(vk_x, vk.IC[0]);
 
     // Make sure that every input is less than the snark scalar field
+    // 确保每个公共输入都小于SNARK标量域，这是协议的要求。
     for (uint256 i = 0; i < input.length; i++) {
       require(input[i] < SNARK_SCALAR_FIELD, "verifier-gte-snark-scalar-field");
+      // 将验证密钥的输入点（vk.IC[i+1]）与公共输入（input[i]）进行标量乘法，然后加到 `vk_x` 上
       vk_x = Pairing.plus(vk_x, Pairing.scalar_mul(vk.IC[i + 1], input[i]));
     }
 
+    // 执行核心的配对检查。这是验证zk-SNARK证明有效性的数学核心。
+    // 该函数使用`Pairing`库，并利用以太坊预编译合约进行高效的椭圆曲线操作。
+    // 检查通过，则证明有效。
     return Pairing.pairing(
       Pairing.negate(_proof.A),
       _proof.B,
